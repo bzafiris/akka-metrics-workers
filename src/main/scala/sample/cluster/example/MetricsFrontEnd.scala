@@ -6,13 +6,30 @@ import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props, Terminated
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import sample.cluster.example.MetricsBackend
-import sample.cluster.example.MetricsBackend.BackendRegistration
+import sample.cluster.example.MetricsBackend.{BackendRegistration, MetricsBatchResult}
+import sample.cluster.example.MetricsFrontEnd.Job
 import sample.cluster.transformation.{TransformationFrontend, TransformationJob}
 
-class MetricsFrontEnd extends Actor with ActorLogging {
+class MetricsFrontEnd(repoPath: String, projectName: String) extends Actor with ActorLogging {
 
   var backends = IndexedSeq.empty[ActorRef]
   var jobCounter = 0
+
+
+
+  override def preStart(): Unit = {
+    log.info("Starting frontend ...")
+
+    Stream.range(0, 1000, 1)
+      .map(x => x.toString).grouped(100)
+      .zipWithIndex
+      .map(x => Job(x._2.toString, x._1.toArray))
+      .foreach(x => println(s"${x.id} - ${x.revisions.length}"))
+
+
+  }
+
+
 
   override def receive: Receive = {
 
@@ -25,15 +42,35 @@ class MetricsFrontEnd extends Actor with ActorLogging {
       backends = backends.filterNot(_ == a)
       log.info("Unregistering backend {}", sender().path.name)
 
+    case MetricsBatchResult(jobId) =>
+      log.info("Job with id {} finished", jobId)
+
   }
 }
 
 object MetricsFrontEnd {
 
-  def props(): Props = Props(new MetricsFrontEnd())
+
+  final case class Job(id: String, revisions: Array[String])
+
+  def props(repoPath: String, projectName: String): Props = Props(new MetricsFrontEnd(repoPath, projectName))
 
   def main(args: Array[String]): Unit = {
-    val port = if (args.isEmpty) "0" else args(0)
+
+    /*
+    args[0] -> repoPath
+    args[1] -> port number
+     */
+
+    if (args.length < 2){
+      println("Usage: MetricsFrontEnd projectName repoPath [port]")
+      return;
+    }
+
+    val port = if (args.length < 3) "0" else args(2)
+    val repoPath = args(1)
+    val projectName = args(0)
+
     val config = ConfigFactory.parseString(
       s"""
         akka.remote.netty.tcp.port=$port
@@ -43,7 +80,7 @@ object MetricsFrontEnd {
       .withFallback(ConfigFactory.load())
 
     val system = ActorSystem("ClusterSystem", config)
-    val frontend = system.actorOf(MetricsFrontEnd.props(), name = "frontend")
+    val frontend = system.actorOf(MetricsFrontEnd.props(repoPath, projectName), name = "frontend")
 
   }
 
