@@ -1,13 +1,25 @@
 package sample.cluster.example
 
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props, RootActorPath}
+import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props, RootActorPath}
 import akka.cluster.{Cluster, Member}
 import akka.cluster.ClusterEvent.{CurrentClusterState, MemberUp}
+
 import com.typesafe.config.ConfigFactory
+import sample.cluster.example.MetricsWorker.{MetricsJob, MetricsResult}
 
 class MetricsBackend extends Actor with ActorLogging {
 
   import MetricsBackend._;
+  var requestedJobs = IndexedSeq.empty[String];
+  var pendingJobs = IndexedSeq.empty[String];
+  var workers = IndexedSeq.empty[ActorRef]
+  //var revisionToFrontEnd = Map.empty[String, ActorRef]
+  //var revisionToJobId = Map.empty[String, String]
+  /**
+    * Serves one job from a single frontend
+    */
+  var frontEnd = Option[ActorRef](null)
+  var batchId = Option[String](null)
 
   val cluster = Cluster(context.system)
 
@@ -17,16 +29,53 @@ class MetricsBackend extends Actor with ActorLogging {
 
   override def receive: Receive = {
 
-    case MetricsBatchJob(id, revisions) => log.info("Received batch with id {}", id)
+    case MetricsBatchJob(id, revisions) =>
+      log.info("****** Received batch with id {}. Processing ...", id)
+      requestedJobs = revisions.toIndexedSeq
+      if (workers.isEmpty){
+        // start workers
+        Stream.range(0, 5).foreach(x => {
+          val workerActor = context.actorOf(
+            MetricsWorker.props(x.toString,
+              "repo", "project", "sourceMeterPath"),
+            s"worker-${x}")
+          workers = workers :+ workerActor
+        })
+      }
+      frontEnd = Option(sender())
+      batchId = Option(id)
+      for(worker <- workers){
+        assignWork(worker)
+      }
+
+    case MetricsResult(revision) =>
+      log.info("{} <{}, {}>", revision, requestedJobs.size, pendingJobs.size)
+      pendingJobs = pendingJobs.filterNot(_ == revision)
+
+      if (pendingJobs.isEmpty && requestedJobs.isEmpty){
+        if (frontEnd.isDefined && batchId.isDefined){
+          frontEnd.get ! MetricsBatchResult(batchId.get)
+          log.info("****** Finished batch {}", batchId.get)
+        }
+      } else {
+        assignWork(sender())
+      }
 
       // once any member becomes available, the current node is notified
     case MemberUp(m) => register(m)
-
       def register(member: Member): Unit =
         if (member.hasRole("frontend"))
           context.actorSelection(RootActorPath(member.address) / "user" / "frontend") !
             BackendRegistration
   }
+
+  def assignWork(worker: ActorRef): Unit =
+    if (!requestedJobs.isEmpty) {
+      val nextRevision = requestedJobs.head
+      requestedJobs = requestedJobs.filterNot(_ == nextRevision)
+      pendingJobs = pendingJobs :+ nextRevision
+      worker ! MetricsJob(nextRevision)
+    }
 
 }
 

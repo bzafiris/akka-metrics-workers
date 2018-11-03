@@ -13,20 +13,24 @@ import sample.cluster.transformation.{TransformationFrontend, TransformationJob}
 class MetricsFrontEnd(repoPath: String, projectName: String) extends Actor with ActorLogging {
 
   var backends = IndexedSeq.empty[ActorRef]
-  var jobCounter = 0
-
+//  var jobCounter = 0
+//  var jobIdToActor = Map.empty[String, ActorRef]
+  var pendingJobs = IndexedSeq.empty[Job]
 
 
   override def preStart(): Unit = {
     log.info("Starting frontend ...")
 
     Stream.range(0, 1000, 1)
-      .map(x => x.toString).grouped(100)
+      .map(x => x.toString).grouped(10)
       .zipWithIndex
       .map(x => Job(x._2.toString, x._1.toArray))
-      .foreach(x => println(s"${x.id} - ${x.revisions.length}"))
+      .foreach(x => {
+        //println(s"${x.id} - ${x.revisions.length}")
+        pendingJobs = pendingJobs :+ x;
+      })
 
-
+    log.info(s"Jobs pending ${pendingJobs.size}")
   }
 
 
@@ -37,6 +41,11 @@ class MetricsFrontEnd(repoPath: String, projectName: String) extends Actor with 
       context watch sender()
       backends = backends :+ sender()
       log.info("Registered backend {}", sender().path.name)
+      if (!pendingJobs.isEmpty){
+        val nextJob = pendingJobs.head
+        pendingJobs = pendingJobs.tail
+        sender() ! MetricsBackend.MetricsBatchJob(nextJob.id, nextJob.revisions)
+      }
 
     case Terminated(a) =>
       backends = backends.filterNot(_ == a)
@@ -44,6 +53,13 @@ class MetricsFrontEnd(repoPath: String, projectName: String) extends Actor with 
 
     case MetricsBatchResult(jobId) =>
       log.info("Job with id {} finished", jobId)
+      pendingJobs = pendingJobs.filterNot(_.id == jobId)
+      log.info(s"Jobs pending ${pendingJobs.size}")
+      if (!pendingJobs.isEmpty){
+        val nextJob = pendingJobs.head
+        pendingJobs = pendingJobs.tail
+        sender() ! MetricsBackend.MetricsBatchJob(nextJob.id, nextJob.revisions)
+      }
 
   }
 }

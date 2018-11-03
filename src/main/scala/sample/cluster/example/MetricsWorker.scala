@@ -3,6 +3,8 @@ package sample.cluster.example
 import akka.actor.{Actor, ActorLogging, Props}
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{InitialStateAsEvents, MemberEvent, MemberUp, UnreachableMember}
+import sample.cluster.example.MetricsBackend.{MetricsBatchJob, MetricsBatchResult}
+import scala.concurrent.duration._
 
 /**
   * Checkouts a git repository and
@@ -16,7 +18,9 @@ import akka.cluster.ClusterEvent.{InitialStateAsEvents, MemberEvent, MemberUp, U
   * gradle run --args='convert ../work-1/jfreechart ../work-1/f19cea1ef6daccda17b9999264481c5b517861d8.csv'
   *
   */
-class MetricsCollector(id: String, repoUrl: String, projectName: String, executablePath: String) extends Actor with ActorLogging {
+class MetricsWorker(id: String, repoUrl: String, projectName: String, executablePath: String) extends Actor with ActorLogging {
+
+  import MetricsWorker._
 
   val cluster = Cluster(context.system)
   /*
@@ -30,6 +34,8 @@ class MetricsCollector(id: String, repoUrl: String, projectName: String, executa
   override def preStart(): Unit = {
     cluster.subscribe(self, initialStateMode = InitialStateAsEvents,
       classOf[MemberEvent], classOf[UnreachableMember])
+    log.info("Worker {} started", id)
+    // initialize directories here
   }
 
 
@@ -38,16 +44,25 @@ class MetricsCollector(id: String, repoUrl: String, projectName: String, executa
     case MemberUp(member) =>
       log.info("Member is Up: {}", member.address)
 
+    case MetricsJob(revision) =>
+      log.info("Processing revision {}", revision)
+      import scala.concurrent.ExecutionContext.Implicits.global
+      val metricsBackend = sender()
+      context.system.scheduler.scheduleOnce(5.seconds) { // send after 5 seconds
+        //log.info("Job finished. Returning result ")
+        metricsBackend ! MetricsResult(revision)
+      }
+
   }
 
 }
 
-object MetricsCollector {
+object MetricsWorker {
+
   def props(id: String, repoUrl: String, projectName: String, executablePath: String): Props
-  = Props(new MetricsCollector(id, repoUrl, projectName, executablePath))
+  = Props(new MetricsWorker(id, repoUrl, projectName, executablePath))
 
   final case class MetricsJob(revision: String)
-
   final case class MetricsResult(revision: String)
 
 }
