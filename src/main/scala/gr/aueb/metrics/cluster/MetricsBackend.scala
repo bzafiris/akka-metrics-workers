@@ -1,11 +1,10 @@
-package sample.cluster.example
+package gr.aueb.metrics.cluster
 
 import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props, RootActorPath}
+import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.{Cluster, Member}
-import akka.cluster.ClusterEvent.{CurrentClusterState, MemberUp}
-
 import com.typesafe.config.ConfigFactory
-import sample.cluster.example.MetricsWorker.{MetricsJob, MetricsResult}
+import gr.aueb.metrics.cluster.MetricsWorker.{MetricsJob, MetricsResult}
 
 class MetricsBackend extends Actor with ActorLogging {
 

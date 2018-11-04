@@ -1,14 +1,9 @@
-package sample.cluster.example
-
-import java.util.concurrent.atomic.AtomicInteger
+package gr.aueb.metrics.cluster
 
 import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props, Terminated}
-import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import sample.cluster.example.MetricsBackend
-import sample.cluster.example.MetricsBackend.{BackendRegistration, MetricsBatchResult}
-import sample.cluster.example.MetricsFrontEnd.Job
-import sample.cluster.transformation.{TransformationFrontend, TransformationJob}
+import gr.aueb.metrics.cluster.MetricsBackend.{BackendRegistration, MetricsBatchResult}
+import gr.aueb.metrics.cluster.MetricsFrontEnd.Job
 
 class MetricsFrontEnd(repoPath: String, projectName: String) extends Actor with ActorLogging {
 

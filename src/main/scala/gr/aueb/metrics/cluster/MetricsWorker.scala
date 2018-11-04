@@ -1,9 +1,9 @@
-package sample.cluster.example
+package gr.aueb.metrics.cluster
 
 import akka.actor.{Actor, ActorLogging, Props}
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{InitialStateAsEvents, MemberEvent, MemberUp, UnreachableMember}
-import sample.cluster.example.MetricsBackend.{MetricsBatchJob, MetricsBatchResult}
+
 import scala.concurrent.duration._
 
 /**
